@@ -1,0 +1,89 @@
+const BASE = "/api";
+
+export async function fetchQuote(ticker) {
+  const r = await fetch(`${BASE}/quote/${ticker}`);
+  if (!r.ok) throw new Error(`Quote fetch failed for ${ticker}`);
+  return r.json();
+}
+
+export async function fetchHistory(ticker, range = "6m") {
+  const r = await fetch(`${BASE}/history/${ticker}?range=${range}`);
+  if (!r.ok) throw new Error(`History fetch failed for ${ticker}`);
+  return r.json();
+}
+
+export async function fetchWatchlist(tickers) {
+  const param = tickers ? `?tickers=${tickers.join(",")}` : "";
+  const r = await fetch(`${BASE}/watchlist${param}`);
+  if (!r.ok) throw new Error("Watchlist fetch failed");
+  return r.json();
+}
+
+export async function searchTickers(query) {
+  const r = await fetch(`${BASE}/search/${encodeURIComponent(query)}`);
+  if (!r.ok) throw new Error("Search failed");
+  return r.json();
+}
+
+// ── SMA calculation (done client-side for instant slider updates) ────────────
+export function calcSMA(bars, window) {
+  return bars.map((b, i) => {
+    if (i < window - 1) return { ...b, sma: null };
+    const slice = bars.slice(i - window + 1, i + 1);
+    const avg = slice.reduce((s, x) => s + x.close, 0) / window;
+    return { ...b, sma: parseFloat(avg.toFixed(4)) };
+  });
+}
+
+export function calcCrossoverSignals(bars, shortW, longW) {
+  const short = calcSMA(bars, shortW);
+  const long  = calcSMA(bars, longW);
+  let position = null;
+  let cash = 10000, shares = 0;
+  const trades = [];
+
+  const combined = bars.map((b, i) => {
+    const s = short[i].sma;
+    const l = long[i].sma;
+    let signal = null;
+
+    if (s !== null && l !== null && i > 0) {
+      const ps = short[i - 1].sma;
+      const pl = long[i - 1].sma;
+      if (ps !== null && pl !== null) {
+        if (ps <= pl && s > l && position !== "long") {
+          signal = "BUY";
+          shares = cash / b.close;
+          cash = 0;
+          position = "long";
+          trades.push({ ...b, signal: "BUY" });
+        } else if (ps >= pl && s < l && position === "long") {
+          signal = "SELL";
+          cash = shares * b.close;
+          shares = 0;
+          position = null;
+          trades.push({ ...b, signal: "SELL" });
+        }
+      }
+    }
+
+    const portfolioValue = position === "long" ? cash + shares * b.close : cash;
+    return { ...b, shortSMA: s, longSMA: l, signal, portfolioValue: parseFloat(portfolioValue.toFixed(2)) };
+  });
+
+  const finalValue = position === "long"
+    ? cash + shares * combined[combined.length - 1].close
+    : cash;
+  const buyHoldShares = 10000 / bars[0].close;
+  const buyHoldFinal = buyHoldShares * bars[bars.length - 1].close;
+
+  return {
+    chartData: combined,
+    trades,
+    finalValue:      parseFloat(finalValue.toFixed(2)),
+    buyHoldFinal:    parseFloat(buyHoldFinal.toFixed(2)),
+    totalReturn:     (((finalValue - 10000) / 10000) * 100).toFixed(2),
+    buyHoldReturn:   (((buyHoldFinal - 10000) / 10000) * 100).toFixed(2),
+    numTrades: trades.length,
+  };
+}

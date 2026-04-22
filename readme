@@ -1,0 +1,26 @@
+## setup:
+
+conda create -n quant python=3.12 -y
+conda activate quant
+pip install yfinance pandas matplotlib
+pip install flask flask-cors requests python-dotenv
+
+## backend dependencies:
+
+pip install -r requirements.txt
+
+## frontend dependencies:
+
+npm install
+
+# running program: need a fe & be terminal##
+
+conda activate quant
+python app.py
+npm run dev
+
+then open http://localhost:5173
+
+## resources used:
+
+- Massive (formarly Polygon IO): getting market data
