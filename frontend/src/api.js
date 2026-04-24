@@ -1,5 +1,6 @@
 // In local dev, Vite proxies /api → localhost:5001
 // In production on Render, VITE_API_URL is set to the backend service URL
+
 const BASE = import.meta.env.VITE_API_URL
   ? `${import.meta.env.VITE_API_URL}/api`
   : "/api";

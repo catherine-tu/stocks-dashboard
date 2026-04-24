@@ -68,6 +68,10 @@ def polygon_get(path, params={}, cache_key=None):
         cache_set(cache_key, data)
     return data
 
+@app.route("/")
+def home():
+    return {"message": "Stock API is running 🚀"}
+
 # ── /api/quote/<ticker> ──────────────────────────────────────────────────────
 @app.route("/api/quote/<ticker>")
 def get_quote(ticker):
