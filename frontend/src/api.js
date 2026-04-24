@@ -1,4 +1,8 @@
-const BASE = "/api";
+// In local dev, Vite proxies /api → localhost:5001
+// In production on Render, VITE_API_URL is set to the backend service URL
+const BASE = import.meta.env.VITE_API_URL
+  ? `${import.meta.env.VITE_API_URL}/api`
+  : "/api";
 
 export async function fetchQuote(ticker) {
   const r = await fetch(`${BASE}/quote/${ticker}`);
@@ -25,7 +29,7 @@ export async function searchTickers(query) {
   return r.json();
 }
 
-// ── SMA calculation (done client-side for instant slider updates) ────────────
+// ── SMA calculation (client-side for instant slider response) ────────────────
 export function calcSMA(bars, window) {
   return bars.map((b, i) => {
     if (i < window - 1) return { ...b, sma: null };
@@ -37,9 +41,10 @@ export function calcSMA(bars, window) {
 
 export function calcCrossoverSignals(bars, shortW, longW) {
   const short = calcSMA(bars, shortW);
-  const long  = calcSMA(bars, longW);
+  const long = calcSMA(bars, longW);
   let position = null;
-  let cash = 10000, shares = 0;
+  let cash = 10000,
+    shares = 0;
   const trades = [];
 
   const combined = bars.map((b, i) => {
@@ -68,22 +73,29 @@ export function calcCrossoverSignals(bars, shortW, longW) {
     }
 
     const portfolioValue = position === "long" ? cash + shares * b.close : cash;
-    return { ...b, shortSMA: s, longSMA: l, signal, portfolioValue: parseFloat(portfolioValue.toFixed(2)) };
+    return {
+      ...b,
+      shortSMA: s,
+      longSMA: l,
+      signal,
+      portfolioValue: parseFloat(portfolioValue.toFixed(2)),
+    };
   });
 
-  const finalValue = position === "long"
-    ? cash + shares * combined[combined.length - 1].close
-    : cash;
+  const finalValue =
+    position === "long"
+      ? cash + shares * combined[combined.length - 1].close
+      : cash;
   const buyHoldShares = 10000 / bars[0].close;
   const buyHoldFinal = buyHoldShares * bars[bars.length - 1].close;
 
   return {
     chartData: combined,
     trades,
-    finalValue:      parseFloat(finalValue.toFixed(2)),
-    buyHoldFinal:    parseFloat(buyHoldFinal.toFixed(2)),
-    totalReturn:     (((finalValue - 10000) / 10000) * 100).toFixed(2),
-    buyHoldReturn:   (((buyHoldFinal - 10000) / 10000) * 100).toFixed(2),
+    finalValue: parseFloat(finalValue.toFixed(2)),
+    buyHoldFinal: parseFloat(buyHoldFinal.toFixed(2)),
+    totalReturn: (((finalValue - 10000) / 10000) * 100).toFixed(2),
+    buyHoldReturn: (((buyHoldFinal - 10000) / 10000) * 100).toFixed(2),
     numTrades: trades.length,
   };
 }

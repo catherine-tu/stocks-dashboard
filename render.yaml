@@ -1,0 +1,25 @@
+services:
+  # ── Flask Backend ──────────────────────────────────────────────────────────
+  - type: web
+    name: quantdash-backend
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      - key: POLYGON_API_KEY
+        sync: false # you'll paste this manually in Render dashboard
+
+  # ── React Frontend ─────────────────────────────────────────────────────────
+  - type: web
+    name: quantdash-frontend
+    runtime: node
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_URL
+        fromService:
+          name: quantdash-backend
+          type: web
+          property: host
