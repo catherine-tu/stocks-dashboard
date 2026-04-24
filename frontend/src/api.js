@@ -1,14 +1,17 @@
 // In local dev, Vite proxies /api → localhost:5001
 // In production on Render, VITE_API_URL is set to the backend service URL
 
-const API_HOST = import.meta.env.VITE_API_URL?.trim() || window.location.origin;
-const BASE = `${API_HOST.replace(/\/$/, "")}/api`;
+const API_HOST = import.meta.env.VITE_API_URL?.trim();
+const BASE = API_HOST ? `${API_HOST.replace(/\/$/, "")}/api` : "/api";
 
 async function handleResponse(response, label) {
   if (response.ok) return response.json();
   const body = await response.text();
+  const missingEnvHint = !API_HOST
+    ? " VITE_API_URL is not set; set this frontend env to your backend host."
+    : "";
   throw new Error(
-    `${label} failed: ${response.status} ${response.statusText} ${body}`,
+    `${label} failed: ${response.status} ${response.statusText} ${body}${missingEnvHint}`,
   );
 }
 

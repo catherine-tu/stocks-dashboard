@@ -12,7 +12,7 @@ services:
 
   # ── React Frontend ─────────────────────────────────────────────────────────
   - type: web
-    name: quantdash-frontend
+    name: stonks-dashboard
     runtime: node
     rootDir: frontend
     buildCommand: npm install && npm run build
