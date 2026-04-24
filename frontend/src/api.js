@@ -1,33 +1,36 @@
 // In local dev, Vite proxies /api → localhost:5001
 // In production on Render, VITE_API_URL is set to the backend service URL
 
-const BASE = import.meta.env.VITE_API_URL
-  ? `${import.meta.env.VITE_API_URL}/api`
-  : "/api";
+const API_HOST = import.meta.env.VITE_API_URL?.trim() || window.location.origin;
+const BASE = `${API_HOST.replace(/\/$/, "")}/api`;
+
+async function handleResponse(response, label) {
+  if (response.ok) return response.json();
+  const body = await response.text();
+  throw new Error(
+    `${label} failed: ${response.status} ${response.statusText} ${body}`,
+  );
+}
 
 export async function fetchQuote(ticker) {
   const r = await fetch(`${BASE}/quote/${ticker}`);
-  if (!r.ok) throw new Error(`Quote fetch failed for ${ticker}`);
-  return r.json();
+  return handleResponse(r, `Quote fetch for ${ticker}`);
 }
 
 export async function fetchHistory(ticker, range = "6m") {
   const r = await fetch(`${BASE}/history/${ticker}?range=${range}`);
-  if (!r.ok) throw new Error(`History fetch failed for ${ticker}`);
-  return r.json();
+  return handleResponse(r, `History fetch for ${ticker}`);
 }
 
 export async function fetchWatchlist(tickers) {
   const param = tickers ? `?tickers=${tickers.join(",")}` : "";
   const r = await fetch(`${BASE}/watchlist${param}`);
-  if (!r.ok) throw new Error("Watchlist fetch failed");
-  return r.json();
+  return handleResponse(r, "Watchlist fetch");
 }
 
 export async function searchTickers(query) {
   const r = await fetch(`${BASE}/search/${encodeURIComponent(query)}`);
-  if (!r.ok) throw new Error("Search failed");
-  return r.json();
+  return handleResponse(r, `Search for ${query}`);
 }
 
 // ── SMA calculation (client-side for instant slider response) ────────────────

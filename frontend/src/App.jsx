@@ -45,6 +45,7 @@ export default function App() {
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const [lastRefresh, setLastRefresh] = useState(null);
+  const [watchlistError, setWatchlistError] = useState(null);
   // Track which card is hovered so we can show the X button
   const [hoveredTicker, setHoveredTicker] = useState(null);
 
@@ -56,12 +57,16 @@ export default function App() {
   // ── Fetch watchlist quotes ───────────────────────────────────────────────
   const refreshQuotes = useCallback(() => {
     setLoadingQuotes(true);
+    setWatchlistError(null);
     fetchWatchlist(watchlist)
       .then((data) => {
         setQuotes(data);
         setLastRefresh(new Date());
       })
-      .catch(console.error)
+      .catch((err) => {
+        console.error(err);
+        setWatchlistError(err.message);
+      })
       .finally(() => setLoadingQuotes(false));
   }, [watchlist]);
 
@@ -353,6 +358,20 @@ export default function App() {
           </span>
         )}
       </header>
+
+      {watchlistError && (
+        <div
+          style={{
+            background: "#3f1b1b",
+            color: "#ffd3d3",
+            padding: "10px 24px",
+            borderBottom: "1px solid #7a3d3d",
+            fontSize: 13,
+          }}
+        >
+          {watchlistError}
+        </div>
+      )}
 
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
         {/* ── Sidebar ── */}
