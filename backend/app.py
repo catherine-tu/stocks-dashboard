@@ -14,19 +14,36 @@ CORS(app)
 POLYGON_API_KEY = os.getenv("POLYGON_API_KEY", "")
 BASE_URL = "https://api.polygon.io"
 
-# ── Simple in-memory cache ───────────────────────────────────────────────────
-# Stores { cache_key: { "data": ..., "expires": timestamp } }
-_cache = {}
-CACHE_TTL = 60 * 15  # 15 minutes — plenty fresh for 15-min delayed data
+# ── File-based cache (survives server restarts) ──────────────────────────────
+import json, hashlib
+CACHE_DIR = "/tmp/quantdash_cache"
+os.makedirs(CACHE_DIR, exist_ok=True)
+CACHE_TTL = 60 * 20  # 20 minutes
+
+def _cache_path(key):
+    safe = hashlib.md5(key.encode()).hexdigest()
+    return os.path.join(CACHE_DIR, f"{safe}.json")
 
 def cache_get(key):
-    entry = _cache.get(key)
-    if entry and time.time() < entry["expires"]:
-        return entry["data"]
+    try:
+        path = _cache_path(key)
+        if not os.path.exists(path):
+            return None
+        with open(path) as f:
+            entry = json.load(f)
+        if time.time() < entry["expires"]:
+            return entry["data"]
+        os.remove(path)
+    except:
+        pass
     return None
 
 def cache_set(key, data, ttl=CACHE_TTL):
-    _cache[key] = {"data": data, "expires": time.time() + ttl}
+    try:
+        with open(_cache_path(key), "w") as f:
+            json.dump({"data": data, "expires": time.time() + ttl}, f)
+    except:
+        pass  # cache failure is non-fatal
 
 # ── Rate limiter: max 4 requests per 60s to stay under free tier limit ───────
 _request_times = []
@@ -71,6 +88,10 @@ def polygon_get(path, params={}, cache_key=None):
 @app.route("/")
 def home():
     return {"message": "Stock API is running 🚀"}
+
+@app.route("/health")
+def health():
+    return jsonify({"status": "ok", "time": datetime.utcnow().isoformat()})
 
 # ── /api/quote/<ticker> ──────────────────────────────────────────────────────
 @app.route("/api/quote/<ticker>")
@@ -216,7 +237,7 @@ def search_tickers(query):
         data = polygon_get(
             "/v3/reference/tickers",
             {"search": query.upper(), "active": "true", "limit": 8, "market": "stocks"},  # ← .upper() here
-            cache_key=f"search:{query.lower()}"
+            cache_key=f"search:{query.upper().strip()}"
         )
         results = [{"ticker": r["ticker"], "name": r.get("name", "")}
                    for r in data.get("results", [])]
