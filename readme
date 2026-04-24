@@ -24,3 +24,4 @@ then open http://localhost:5173
 ## resources used:
 
 - Massive (formarly Polygon IO) API: used to retrieve all US stocks for my website. However, I can only request 5 times per minute, and there is a 15 minute data delay. Additionally, this API does not cover international stocks, options, crypto, or commodities.
+- uptimerobot.com to ping my backend every 5 minutes
