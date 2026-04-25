@@ -234,13 +234,32 @@ def get_watchlist():
 @app.route("/api/search/<query>")
 def search_tickers(query):
     try:
+        q = query.strip()
+        cache_key = f"search:{q.upper()}"
+
+        # Search twice: once by exact ticker, once by name — merge results
+        results_map = {}
+
+        # Pass 1: exact/prefix ticker match (uppercase)
         data = polygon_get(
             "/v3/reference/tickers",
-            {"search": query.upper(), "active": "true", "limit": 8, "market": "stocks"},  # ← .upper() here
-            cache_key=f"search:{query.upper().strip()}"
+            {"ticker": q.upper(), "active": "true", "limit": 5, "market": "stocks"},
+            cache_key=f"ticker_exact:{q.upper()}"
         )
+        for r in data.get("results", []):
+            results_map[r["ticker"]] = r
+
+        # Pass 2: full-text search (original casing — Polygon matches company names)
+        data2 = polygon_get(
+            "/v3/reference/tickers",
+            {"search": q, "active": "true", "limit": 8, "market": "stocks"},
+            cache_key=f"search_name:{q.lower()}"
+        )
+        for r in data2.get("results", []):
+            results_map[r["ticker"]] = r  # deduplicated by ticker
+
         results = [{"ticker": r["ticker"], "name": r.get("name", "")}
-                   for r in data.get("results", [])]
+                   for r in results_map.values()][:8]
         return jsonify(results)
     except Exception as e:
         print(f"[search/{query}] ERROR: {e}")

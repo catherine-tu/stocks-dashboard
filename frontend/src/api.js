@@ -20,15 +20,49 @@ export async function fetchQuote(ticker) {
   return handleResponse(r, `Quote fetch for ${ticker}`);
 }
 
+// Simple in-memory cache so switching between tickers is instant
+const _historyCache = {};
+
 export async function fetchHistory(ticker, range = "6m") {
+  const key = `${ticker}:${range}`;
+
+  // Return cached data if less than 20 minutes old
+  if (
+    _historyCache[key] &&
+    Date.now() - _historyCache[key].ts < 20 * 60 * 1000
+  ) {
+    return _historyCache[key].data;
+  }
+
   const r = await fetch(`${BASE}/history/${ticker}?range=${range}`);
-  return handleResponse(r, `History fetch for ${ticker}`);
+  if (!r.ok)
+    throw new Error(
+      `History fetch failed for ${ticker}: ${r.status} ${await r.text()}`,
+    );
+  const data = await r.json();
+
+  // Store in cache with timestamp
+  _historyCache[key] = { data, ts: Date.now() };
+  return data;
 }
 
+let _watchlistCache = null;
+let _watchlistTs = 0;
+
 export async function fetchWatchlist(tickers) {
+  // Return cached watchlist if less than 5 minutes old
+  if (_watchlistCache && Date.now() - _watchlistTs < 5 * 60 * 1000) {
+    return _watchlistCache;
+  }
+
   const param = tickers ? `?tickers=${tickers.join(",")}` : "";
   const r = await fetch(`${BASE}/watchlist${param}`);
-  return handleResponse(r, "Watchlist fetch");
+  if (!r.ok) throw new Error("Watchlist fetch failed");
+  const data = await r.json();
+
+  _watchlistCache = data;
+  _watchlistTs = Date.now();
+  return data;
 }
 
 export async function searchTickers(query) {
