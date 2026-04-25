@@ -18,7 +18,7 @@ BASE_URL = "https://api.polygon.io"
 import json, hashlib
 CACHE_DIR = "/tmp/quantdash_cache"
 os.makedirs(CACHE_DIR, exist_ok=True)
-CACHE_TTL = 60 * 20  # 20 minutes
+CACHE_TTL = 60 * 60 * 6 # 6 hrs
 
 def _cache_path(key):
     safe = hashlib.md5(key.encode()).hexdigest()
@@ -48,30 +48,31 @@ def cache_set(key, data, ttl=CACHE_TTL):
 # ── Rate limiter: max 4 requests per 60s to stay under free tier limit ───────
 _request_times = []
 
+
 def rate_limited_get(path, params={}):
-    global _request_times
-    now = time.time()
-
-    # Keep only requests in the last 60 seconds
-    _request_times = [t for t in _request_times if now - t < 60]
-
-    # If we've hit 4 requests in the last 60s, wait
-    if len(_request_times) >= 4:
-        oldest = _request_times[0]
-        wait_for = 61 - (now - oldest)
-        if wait_for > 0:
-            print(f"[RateLimit] Waiting {wait_for:.1f}s...")
-            time.sleep(wait_for)
-
     p = dict(params)
     p["apiKey"] = POLYGON_API_KEY
-    _request_times.append(time.time())
 
-    r = requests.get(f"{BASE_URL}{path}", params=p, timeout=15)
-    if not r.ok:
-        print(f"[Polygon] {r.status_code} on {path}: {r.text[:200]}")
-        r.raise_for_status()
-    return r.json()
+    for attempt in range(3):
+        try:
+            r = requests.get(
+                f"{BASE_URL}{path}",
+                params=p,
+                timeout=20   # ⬅️ faster fail, but not too short
+            )
+            if r.status_code == 429:
+                print("[Polygon] Rate limited, retrying...")
+                time.sleep(1.5 * (attempt + 1))
+                continue
+
+            r.raise_for_status()
+            return r.json()
+
+        except requests.exceptions.Timeout:
+            print(f"[Timeout] attempt {attempt+1}/3")
+            if attempt == 2:
+                raise
+            time.sleep(1.5 * (attempt + 1))
 
 def polygon_get(path, params={}, cache_key=None):
     """Fetch from cache first, then Polygon."""
@@ -88,6 +89,17 @@ def polygon_get(path, params={}, cache_key=None):
 @app.route("/")
 def home():
     return {"message": "Stock API is running 🚀"}
+
+# pre-warm the cache
+@app.route("/warm")
+def warm():
+    for t in ["SPY", "QQQ", "AAPL"]:
+        try:
+            get_history(t)
+        except:
+            pass
+    return {"status": "warmed"}
+
 
 @app.route("/health")
 def health():
@@ -127,18 +139,39 @@ def get_history(ticker):
     t = ticker.upper()
     range_param = request.args.get("range", "6m")
     try:
-        range_map = {"1m": 30, "3m": 90, "6m": 180, "1y": 365, "2y": 730, "5y": 1825}
+        # range_map = {"1m": 30, "3m": 90, "6m": 180, "1y": 365, "2y": 730, "5y": 1825}
+        range_map = {
+            "1m": 30,
+            "3m": 90,
+            "6m": 180,
+            "1y": 365,
+            # "2y": 365,   # cap
+            # "5y": 365    # cap HARD
+        }
         days_back = range_map.get(range_param, 180)
         today     = datetime.today()
         from_date = (today - timedelta(days=days_back)).strftime("%Y-%m-%d")
         to_date   = today.strftime("%Y-%m-%d")
 
-        cache_key = f"history:{t}:{range_param}:{today.strftime('%Y-%m-%d')}"
-        data = polygon_get(
-            f"/v2/aggs/ticker/{t}/range/1/day/{from_date}/{to_date}",
-            {"adjusted": "true", "sort": "asc", "limit": 5000},
-            cache_key=cache_key,
-        )
+        # cache_key = f"history:{t}:{range_param}:{today.strftime('%Y-%m-%d')}"
+        cache_key = f"history:{t}:{range_param}"
+        try:
+            data = polygon_get(
+                f"/v2/aggs/ticker/{t}/range/1/day/{from_date}/{to_date}",
+                {"adjusted": "true", "sort": "asc", "limit": 2000},
+                cache_key=cache_key,
+            )
+        except Exception as e:
+            print(f"[history/{t}] primary failed, falling back: {e}")
+
+            # fallback to 3 months
+            fallback_from = (today - timedelta(days=90)).strftime("%Y-%m-%d")
+
+            data = polygon_get(
+                f"/v2/aggs/ticker/{t}/range/1/day/{fallback_from}/{to_date}",
+                {"adjusted": "true", "sort": "asc", "limit": 1000},
+                cache_key=f"{cache_key}:fallback",
+            )
 
         results = data.get("results") or []
         print(f"[history/{t}] {range_param} → {len(results)} bars")
